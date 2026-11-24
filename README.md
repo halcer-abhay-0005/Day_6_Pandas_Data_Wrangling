@@ -26,7 +26,7 @@ Rejected rows go to `tickets_rejected.csv` with a `reject_reason`, so nothing di
 Averages ignore NA ratings (and report `rated_tickets`), so missing is not treated as 0.
 
 ## Results
-29 tests pass (`evidence/test_results.txt`). Sample run: 13 raw rows → 7 clean, 5 rejected, 1 duplicate removed, 53.85% quality (`evidence/pipeline_output.txt`).
+36 tests pass (`evidence/test_results.txt`). Sample run: 13 raw rows → 7 clean, 5 rejected, 1 duplicate removed, 53.85% quality (`evidence/pipeline_output.txt`).
 
 ## Screenshots
 ![pytest results](screenshots/01_pytest_results.png)

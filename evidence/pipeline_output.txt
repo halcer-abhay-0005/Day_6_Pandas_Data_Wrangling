@@ -1,3 +1,5 @@
+== RAW INPUT SHA-256 (before) ==
+659a8bde3426cbdb1ffc59778b20c9ac272b74ff657567f0c283fefd224cadab  data/raw/tickets_raw.csv
 == DATA QUALITY ==
 {
   "input_rows": 13,
@@ -6,6 +8,7 @@
   "rejected_rows": 5,
   "clean_rows": 7,
   "rejection_reasons": {
+    "missing_ticket_id": 0,
     "missing_priority_or_category": 1,
     "invalid_priority": 1,
     "non_finite_resolution_time": 0,
@@ -13,6 +16,7 @@
     "negative_resolution_time": 1
   },
   "ratings_out_of_range_nulled": 1,
+  "ratings_invalid_text_nulled": 0,
   "unparseable_dates": 1,
   "missing_ratings_kept": 2,
   "data_quality_percentage": 53.85
@@ -57,3 +61,11 @@ ticket_id                reject_reason
    TKT007 missing_priority_or_category
    TKT008             invalid_priority
    TKT012      missing_resolution_time
+
+== RAW INPUT SHA-256 (after) ==
+659a8bde3426cbdb1ffc59778b20c9ac272b74ff657567f0c283fefd224cadab  data/raw/tickets_raw.csv
+
+== OUTPUT-COLLISION CHECK (input path == output tickets_clean.csv) ==
+659a8bde3426cbdb1ffc59778b20c9ac272b74ff657567f0c283fefd224cadab  /var/folders/hg/0_vn0b9s76vgy8tl8hvx1vs40000gn/T/tmp.fvhd0IjzOd/tickets_clean.csv
+refused: Output file /var/folders/hg/0_vn0b9s76vgy8tl8hvx1vs40000gn/T/tmp.fvhd0IjzOd/tickets_clean.csv would overwrite the raw input /private/var/folders/hg/0_vn0b9s76vgy8tl8hvx1vs40000gn/T/tmp.fvhd0IjzOd/tickets_clean.csv; choose a different input path or output directory.
+659a8bde3426cbdb1ffc59778b20c9ac272b74ff657567f0c283fefd224cadab  /var/folders/hg/0_vn0b9s76vgy8tl8hvx1vs40000gn/T/tmp.fvhd0IjzOd/tickets_clean.csv
