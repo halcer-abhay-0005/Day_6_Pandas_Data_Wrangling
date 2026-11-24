@@ -27,6 +27,10 @@ Averages ignore NA ratings (and report `rated_tickets`), so missing is not treat
 ## Results
 12 tests pass (`evidence/test_results.txt`). Sample run: 13 raw rows → 7 clean, 5 rejected, 1 duplicate removed, 53.85% quality (`evidence/pipeline_output.txt`).
 
+## Screenshots
+![pytest results](screenshots/01_pytest_results.png)
+![pipeline report](screenshots/02_pipeline_report.png)
+
 ## Limitations
 - Priority vocabulary is fixed; no fuzzy matching.
 - Rows with a bad resolution time are dropped from all summaries, including rating, which may bias them.
