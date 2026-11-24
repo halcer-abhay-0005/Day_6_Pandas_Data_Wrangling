@@ -1,0 +1,58 @@
+== DATA QUALITY ==
+{
+  "input_rows": 13,
+  "exact_duplicates_removed": 1,
+  "rows_sharing_ticket_id_with_different_content": 0,
+  "rejected_rows": 5,
+  "clean_rows": 7,
+  "rejection_reasons": {
+    "missing_priority_or_category": 1,
+    "invalid_priority": 1,
+    "missing_resolution_time": 2,
+    "negative_resolution_time": 1
+  },
+  "ratings_out_of_range_nulled": 1,
+  "unparseable_dates": 1,
+  "missing_ratings_kept": 2,
+  "data_quality_percentage": 53.85
+}
+
+== PRIORITY SUMMARY ==
+          tickets  avg_resolution_hours  avg_rating  rated_tickets
+priority                                                          
+Low             2                  2.25         3.5              2
+Medium          2                  3.55         5.0              1
+High            2                  4.85         3.5              2
+Critical        1                  5.70        <NA>              0
+
+== CATEGORY SUMMARY ==
+           tickets  avg_resolution_hours  avg_rating  rated_tickets
+category                                                           
+Network          3                  2.97        3.33              3
+Billing          2                  4.65         4.0              1
+Technical        2                  4.40         5.0              1
+
+== STATUS SUMMARY ==
+             tickets  avg_resolution_hours  avg_rating  rated_tickets
+status                                                               
+Closed             2                  4.85         3.5              2
+In Progress        2                  2.25         3.5              2
+Resolved           2                  3.55         5.0              1
+Open               1                  5.70        <NA>              0
+
+== RATING_DISTRIBUTION SUMMARY ==
+        tickets
+rating         
+1             0
+2             0
+3             2
+4             2
+5             1
+
+== REJECTED ==
+ticket_id                reject_reason
+   TKT005      missing_resolution_time
+   TKT006     negative_resolution_time
+   TKT007 missing_priority_or_category
+   TKT008             invalid_priority
+   TKT012      missing_resolution_time

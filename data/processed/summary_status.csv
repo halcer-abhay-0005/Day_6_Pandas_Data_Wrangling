@@ -1,0 +1,5 @@
+status,tickets,avg_resolution_hours,avg_rating,rated_tickets
+Closed,2,4.85,3.5,2
+In Progress,2,2.25,3.5,2
+Resolved,2,3.55,5.0,1
+Open,1,5.7,,0

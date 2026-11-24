@@ -1,0 +1,5 @@
+priority,tickets,avg_resolution_hours,avg_rating,rated_tickets
+Low,2,2.25,3.5,2
+Medium,2,3.55,5.0,1
+High,2,4.85,3.5,2
+Critical,1,5.7,,0

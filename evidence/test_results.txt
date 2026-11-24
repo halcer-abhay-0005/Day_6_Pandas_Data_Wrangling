@@ -1,0 +1,21 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.15.2, pytest-8.4.2, pluggy-1.7.0 -- /usr/local/bin/python3
+cachedir: .pytest_cache
+rootdir: /Users/apple/Desktop/30_day_learning/Day 6
+plugins: cov-7.1.0
+collecting ... collected 12 items
+
+tests/test_ticket_pipeline.py::test_schema_missing_column PASSED         [  8%]
+tests/test_ticket_pipeline.py::test_schema_empty_and_duplicate_columns PASSED [ 16%]
+tests/test_ticket_pipeline.py::test_raw_not_mutated PASSED               [ 25%]
+tests/test_ticket_pipeline.py::test_cleaning_counts PASSED               [ 33%]
+tests/test_ticket_pipeline.py::test_normalisation PASSED                 [ 41%]
+tests/test_ticket_pipeline.py::test_missing_not_imputed PASSED           [ 50%]
+tests/test_ticket_pipeline.py::test_invalid_priority_not_guessed PASSED  [ 58%]
+tests/test_ticket_pipeline.py::test_out_of_range_rating_nulled_row_kept PASSED [ 66%]
+tests/test_ticket_pipeline.py::test_aggregations_known_values PASSED     [ 75%]
+tests/test_ticket_pipeline.py::test_zero_resolution_time_is_valid PASSED [ 83%]
+tests/test_ticket_pipeline.py::test_all_rows_invalid_gives_empty_report PASSED [ 91%]
+tests/test_ticket_pipeline.py::test_bad_date_nulled_row_kept PASSED      [100%]
+
+============================== 12 passed in 0.29s ==============================

@@ -1,0 +1,8 @@
+ticket_id,priority,category,resolution_time_hours,created_at,status,rating
+TKT001,Low,Network,1.8,2026-10-02,In Progress,4
+TKT002,Medium,Technical,3.1,2026-10-03,Resolved,5
+TKT003,High,Network,4.4,2026-10-04,Closed,3
+TKT004,Critical,Technical,5.7,2026-10-05,Open,
+TKT009,Low,Network,2.7,,In Progress,3
+TKT010,Medium,Billing,4.0,2026-10-11,Resolved,
+TKT011,High,Billing,5.3,2026-10-12,Closed,4
