@@ -1,11 +1,11 @@
 # Day 06 Daily Report: Pandas Data Wrangling
 
-Developer: Abhay Gour
-Assignment: Day 06 - Pandas_Data_Wranglig
-Date: 2026-11-23
-Repository URL: https://github.com/halcer-abhay-0005/Day_6_Pandas_Data_Wrangling.git
-Latest commit hash: 4d978f1
-Pull Request: N/A — no pull request created
+- **Developer:** Abhay Gour
+- **Assignment:** Day 06 - Pandas_Data_Wranglig
+- **Date:** 2026-11-23
+- **Repository URL:** https://github.com/halcer-abhay-0005/Day_6_Pandas_Data_Wrangling.git
+- **Latest commit hash:** `4d978f1`
+- **Pull Request:** N/A — no pull request created
 
 - **Topics learned:** 
     - Series and DataFrames
