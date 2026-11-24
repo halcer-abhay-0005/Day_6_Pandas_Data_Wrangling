@@ -27,11 +27,19 @@ Pull Request: N/A — no pull request created
   - Raw data is left unchanged. Outputs go to `data/processed/`.
   - A messy sample dataset is in `data/raw/tickets_raw.csv`.
   - The README covers setup, assumptions and limitations.
-- **Tests/experiment results:** 12 of 12 pytest tests pass (`evidence/test_results.txt`). The sample run turned 13 raw rows into 7 clean rows, 5 rejected rows and 1 removed duplicate. Data quality was 53.85% (`evidence/pipeline_output.txt`).
+- **Tests/experiment results:** 29 of 29 pytest tests pass (`evidence/test_results.txt`). The sample run turned 13 raw rows into 7 clean rows, 5 rejected rows and 1 removed duplicate. Data quality was 53.85% (`evidence/pipeline_output.txt`).
 - **One bug or challenge and its root cause:**
   - **Challenge:** The pipeline crashed with exit code 139 (a segfault). Cause: `pd.to_datetime` and Timestamp creation segfault on this machine (Python 3.15 with pandas 2.3.3).
   - **Fix:** I validate `created_at` with `datetime.date.fromisoformat` and keep it as ISO strings.
   - **Other bug:** The first test run failed because `DataFrame.apply(axis=1)` on an empty frame returns a DataFrame, which broke assigning `reject_reason`. I replaced it with a list comprehension.
+- **Review-derived fixes:** Checked against earlier code reviews (Day 3/4) and fixed:
+  - infinite resolution times were accepted as valid
+  - duplicate raw headers were renamed by pandas and accepted
+  - extra or short rows silently shifted data
+  - empty or missing files raised raw pandas/OS errors
+  - `.title()` corrupted the category "IT" to "It"
+
+  All now have regression tests.
 - **One design decision and why:** Rows with missing or invalid resolution time, or an invalid priority, are rejected and logged. They are not imputed or mapped. A missing value is not the same as 0 or the average, and "Urgent" is not necessarily "Critical". Missing ratings are kept as missing, because a ticket can be valid without feedback, and averages ignore them.
 - **Blocker and what I tried:** The Timestamp segfault above. I tried an explicit date format and checked the traceback with `faulthandler`. I then worked around it with the standard library. Nothing else is blocking.
 - **Tomorrow's plan:** After Successfully passing Day-6 Task, will get Day-7 Task.

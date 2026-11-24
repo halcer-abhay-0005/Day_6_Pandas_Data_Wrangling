@@ -13,11 +13,12 @@ Layout: `data/raw` (never modified) · `data/processed` (clean, rejected, summar
 ## Cleaning assumptions (also in the module docstring)
 | Rule | Behaviour |
 |---|---|
-| Names/text | columns snake_cased; text trimmed, Title-cased; blanks -> NA |
+| Names/text | columns snake_cased; priority/status trimmed and Title-cased; blanks -> NA |
 | Duplicates | exact duplicates dropped (first kept); same ticket_id with different content only flagged |
-| Resolution time | non-numeric / negative / missing -> row **rejected**, never imputed; 0 is valid |
+| Resolution time | non-numeric / negative / infinite / missing -> row **rejected**, never imputed; 0 is valid |
 | Priority | must be Low/Medium/High/Critical; unknown values (e.g. "Urgent") rejected, not mapped |
-| Category | missing -> rejected |
+| Category | missing -> rejected; case variants unified to most common spelling ("IT" stays "IT") |
+| Input shape | `load_ticket_csv` raises `TicketDataError` for missing/empty/non-UTF-8 files, duplicate headers (raw or after normalization), and rows with the wrong field count, with no guessing or shifting |
 | Rating | integer 1–5; missing kept as NA; out-of-range set to NA (row kept) |
 | created_at | invalid -> NA (row kept) |
 
@@ -25,7 +26,7 @@ Rejected rows go to `tickets_rejected.csv` with a `reject_reason`, so nothing di
 Averages ignore NA ratings (and report `rated_tickets`), so missing is not treated as 0.
 
 ## Results
-12 tests pass (`evidence/test_results.txt`). Sample run: 13 raw rows → 7 clean, 5 rejected, 1 duplicate removed, 53.85% quality (`evidence/pipeline_output.txt`).
+29 tests pass (`evidence/test_results.txt`). Sample run: 13 raw rows → 7 clean, 5 rejected, 1 duplicate removed, 53.85% quality (`evidence/pipeline_output.txt`).
 
 ## Screenshots
 ![pytest results](screenshots/01_pytest_results.png)

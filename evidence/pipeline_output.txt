@@ -8,6 +8,7 @@
   "rejection_reasons": {
     "missing_priority_or_category": 1,
     "invalid_priority": 1,
+    "non_finite_resolution_time": 0,
     "missing_resolution_time": 2,
     "negative_resolution_time": 1
   },
@@ -23,14 +24,14 @@ priority
 Low             2                  2.25         3.5              2
 Medium          2                  3.55         5.0              1
 High            2                  4.85         3.5              2
-Critical        1                  5.70        <NA>              0
+Critical        1                   5.7        <NA>              0
 
 == CATEGORY SUMMARY ==
            tickets  avg_resolution_hours  avg_rating  rated_tickets
 category                                                           
 Network          3                  2.97        3.33              3
 Billing          2                  4.65         4.0              1
-Technical        2                  4.40         5.0              1
+Technical        2                   4.4         5.0              1
 
 == STATUS SUMMARY ==
              tickets  avg_resolution_hours  avg_rating  rated_tickets
@@ -38,7 +39,7 @@ status
 Closed             2                  4.85         3.5              2
 In Progress        2                  2.25         3.5              2
 Resolved           2                  3.55         5.0              1
-Open               1                  5.70        <NA>              0
+Open               1                   5.7        <NA>              0
 
 == RATING_DISTRIBUTION SUMMARY ==
         tickets

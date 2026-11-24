@@ -3,11 +3,12 @@
 Cleaning rules (assumptions)
 ----------------------------
 R1  Column names are trimmed, lower-cased, spaces -> underscores.
-R2  Text fields are trimmed; priority/status are Title-cased, category too.
+R2  Text fields are trimmed; priority/status are Title-cased; category case
+    variants are unified to the most common spelling (keeps "IT" intact).
     Blank strings become missing (NA).
 R3  Exact duplicate rows are dropped (first kept); duplicate ticket_id with
     different content is flagged but both rows are kept for review.
-R4  Non-numeric / negative resolution_time_hours -> invalid, row rejected.
+R4  Non-numeric / negative / infinite resolution_time_hours -> invalid, row rejected.
     Missing resolution time is NEVER imputed (unknown != 0 or mean).
 R5  Missing priority or category -> row rejected (cannot be summarised).
 R6  priority must be in VALID_PRIORITIES, otherwise rejected (no guessing,
@@ -16,13 +17,19 @@ R7  rating must be an integer 1-5. Missing rating is KEPT as NA (a ticket
     can be valid without feedback); out-of-range rating is set to NA and
     counted, the row itself stays valid.
 R8  Unparseable created_at -> NA (ISO strings kept), counted, row stays valid.
+Input shape (strict, in load_ticket_csv): duplicate headers (raw or after
+normalization), rows with the wrong field count, empty/missing/undecodable
+files all raise TicketDataError - nothing is guessed or shifted.
 Raw input is never mutated; every step works on a copy.
 """
 
 from __future__ import annotations
 
+import csv
 from datetime import date
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
@@ -48,6 +55,60 @@ RATING_RANGE = (1, 5)
 
 
 # ---------- Task A: schema ----------
+class TicketDataError(ValueError):
+    """Raised for unreadable, malformed or ambiguous ticket input."""
+
+
+def _norm_name(name: str) -> str:
+    return str(name).strip().lower().replace(" ", "_")
+
+
+def load_ticket_csv(path: str | Path) -> pd.DataFrame:
+    """Read a CSV as strings with strict shape checks. Raw file is not modified.
+
+    Uses the csv module (not pd.read_csv) so that duplicate raw headers are
+    seen before pandas renames them (priority -> priority.1), rows with too
+    many/few fields are rejected instead of shifting columns, and no column
+    is silently turned into the index.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise TicketDataError(f"File not found: {path}")
+    if not path.is_file():
+        raise TicketDataError(f"Not a file: {path}")
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise TicketDataError("CSV must be UTF-8 encoded.") from exc
+    except OSError as exc:
+        raise TicketDataError(f"Cannot read {path}: {exc.strerror}") from exc
+
+    try:
+        rows = [r for r in csv.reader(text.splitlines(), strict=True) if any(c.strip() for c in r)]
+    except csv.Error as exc:
+        raise TicketDataError(f"Malformed CSV: {exc}") from exc
+    if not rows:
+        raise TicketDataError("CSV file is empty.")
+
+    header, body = rows[0], rows[1:]
+    raw_dupes = {h for h in header if header.count(h) > 1}
+    if raw_dupes:
+        raise TicketDataError(f"Duplicate column names: {', '.join(sorted(raw_dupes))}")
+    normed = [_norm_name(h) for h in header]
+    norm_dupes = {h for h in normed if normed.count(h) > 1}
+    if norm_dupes:
+        raise TicketDataError(
+            f"Duplicate column names after normalization: {', '.join(sorted(norm_dupes))}"
+        )
+    for line_no, row in enumerate(rows[1:], start=2):
+        if len(row) != len(header):
+            raise TicketDataError(
+                f"Malformed CSV: row {line_no} has {len(row)} fields, expected {len(header)}."
+            )
+    df = pd.DataFrame(body, columns=header, dtype="string")
+    return df.replace("", pd.NA)
+
+
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out.columns = [str(c).strip().lower().replace(" ", "_") for c in out.columns]
@@ -55,17 +116,29 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def validate_schema(df: pd.DataFrame) -> None:
-    """Raise ValueError if required columns are missing/duplicated or df empty."""
+    """Raise TicketDataError (a ValueError) if required columns are missing/duplicated or df empty."""
     if df.columns.duplicated().any():
-        raise ValueError("Duplicate column names after normalization.")
+        raise TicketDataError("Duplicate column names after normalization.")
     missing = [c for c in REQUIRED_SCHEMA if c not in df.columns]
     if missing:
-        raise ValueError(f"Missing required columns: {', '.join(missing)}")
+        raise TicketDataError(f"Missing required columns: {', '.join(missing)}")
     if df.empty:
-        raise ValueError("Input contains no rows.")
+        raise TicketDataError("Input contains no rows.")
 
 
 # ---------- Task B: cleaning ----------
+def _canonical_case(series: pd.Series) -> pd.Series:
+    """Map case-variants ("network", "Network") to one deterministic spelling."""
+    valid = series.dropna()
+    if valid.empty:
+        return series
+    counts = valid.value_counts()
+    canon = {}
+    for value in sorted(counts.index, key=lambda v: (-counts[v], v)):
+        canon.setdefault(value.casefold(), value)
+    return series.map(lambda v: canon[v.casefold()] if pd.notna(v) else v).astype("string")
+
+
 def clean_tickets(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """Return (clean, rejected, stats). `raw` is left unchanged."""
     df = normalize_columns(raw)
@@ -75,7 +148,7 @@ def clean_tickets(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     for col in ["ticket_id", "priority", "category", "status"]:
         if col in df.columns:
             df[col] = df[col].astype("string").str.strip().replace("", pd.NA)
-    for col in ["priority", "category", "status"]:
+    for col in ["priority", "status"]:
         if col in df.columns:
             df[col] = df[col].str.title()
 
@@ -83,6 +156,9 @@ def clean_tickets(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     dup_exact = df.duplicated(keep="first")
     n_dup_exact = int(dup_exact.sum())
     df = df.loc[~dup_exact].copy()
+    # Category: unify case variants to the most common spelling (ties ->
+    # alphabetical) instead of .title(), which would corrupt "IT" -> "It".
+    df["category"] = _canonical_case(df["category"])
     conflicting_ids = int(
         df["ticket_id"].dropna().duplicated(keep=False).sum()
     )
@@ -91,6 +167,9 @@ def clean_tickets(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     df["resolution_time_hours"] = pd.to_numeric(
         df["resolution_time_hours"], errors="coerce"
     )
+    # R4b: +inf/-inf are not real durations; count separately, then treat as invalid
+    non_finite = np.isinf(df["resolution_time_hours"].astype("float64"))
+    df.loc[non_finite, "resolution_time_hours"] = np.nan
 
     # optional columns
     rating_out_of_range = 0
@@ -113,13 +192,15 @@ def clean_tickets(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     reasons = pd.DataFrame(index=df.index)
     reasons["missing_priority_or_category"] = df[["priority", "category"]].isna().any(axis=1)
     reasons["invalid_priority"] = df["priority"].notna() & ~df["priority"].isin(VALID_PRIORITIES)
-    reasons["missing_resolution_time"] = df["resolution_time_hours"].isna()
+    reasons["non_finite_resolution_time"] = non_finite
+    reasons["missing_resolution_time"] = df["resolution_time_hours"].isna() & ~non_finite
     reasons["negative_resolution_time"] = df["resolution_time_hours"] < 0
+    reasons = reasons.fillna(False).astype(bool)
     reject = reasons.any(axis=1)
 
     rejected = df.loc[reject].copy()
     rejected["reject_reason"] = [
-        ";".join(reasons.columns[list(flags)])
+        ";".join(reasons.columns[np.asarray(flags, dtype=bool)])
         for flags in reasons.loc[reject].to_numpy()
     ]
     clean = df.loc[~reject].reset_index(drop=True)
@@ -167,8 +248,7 @@ def build_report(clean: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
 # ---------- orchestration ----------
 def run_pipeline(raw_path: str, out_dir: str) -> dict:
-    from pathlib import Path
-    raw = pd.read_csv(raw_path, dtype=str, keep_default_na=True)
+    raw = load_ticket_csv(raw_path)
     clean, rejected, stats = clean_tickets(raw)
     report = build_report(clean)
     out = Path(out_dir)
@@ -184,7 +264,11 @@ if __name__ == "__main__":
     import json
     import sys
     raw_path = sys.argv[1] if len(sys.argv) > 1 else "data/raw/tickets_raw.csv"
-    res = run_pipeline(raw_path, "data/processed")
+    try:
+        res = run_pipeline(raw_path, "data/processed")
+    except TicketDataError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
     print("== DATA QUALITY ==")
     print(json.dumps(res["stats"], indent=2))
     for name, table in res["report"].items():

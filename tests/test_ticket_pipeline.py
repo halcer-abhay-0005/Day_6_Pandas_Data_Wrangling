@@ -1,7 +1,14 @@
 import pandas as pd
 import pytest
 
-from src.ticket_pipeline import build_report, clean_tickets, validate_schema
+from src.ticket_pipeline import (
+    TicketDataError,
+    build_report,
+    clean_tickets,
+    load_ticket_csv,
+    run_pipeline,
+    validate_schema,
+)
 
 
 def make(rows):
@@ -111,3 +118,90 @@ def test_bad_date_nulled_row_kept():
     clean, _, stats = clean_tickets(df)
     assert len(clean) == 1 and pd.isna(clean.loc[0, "created_at"])
     assert stats["unparseable_dates"] == 1
+
+
+# ---------- loader / review-derived regressions ----------
+HEADER = "ticket_id,priority,category,resolution_time_hours\n"
+
+
+def write(tmp_path, text, name="t.csv"):
+    p = tmp_path / name
+    p.write_text(text)
+    return p
+
+
+@pytest.mark.parametrize("value", ["inf", "-inf", "Infinity"])
+def test_non_finite_resolution_rejected(tmp_path, value):
+    raw = load_ticket_csv(write(tmp_path, HEADER + f"T1,High,IT,{value}\nT2,Low,Billing,2\n"))
+    clean, rejected, stats = clean_tickets(raw)
+    assert clean["resolution_time_hours"].tolist() == [2.0]
+    assert rejected["reject_reason"].iloc[0] == "non_finite_resolution_time"
+    assert stats["rejection_reasons"]["non_finite_resolution_time"] == 1
+    assert build_report(clean)["category"]["avg_resolution_hours"].notna().all()
+
+
+def test_extra_fields_raise_not_shift(tmp_path):
+    with pytest.raises(TicketDataError, match="row 2 has 5 fields, expected 4"):
+        load_ticket_csv(write(tmp_path, HEADER + "T1,High,IT,3,EXTRA\nT2,Low,Billing,2,X\n"))
+
+
+def test_short_row_raises(tmp_path):
+    with pytest.raises(TicketDataError, match="row 2 has 3 fields"):
+        load_ticket_csv(write(tmp_path, HEADER + "T1,High,IT\n"))
+
+
+@pytest.mark.parametrize("header", [
+    "ticket_id,priority,priority,category,resolution_time_hours",    # identical
+    "ticket_id,priority,category,resolution_time_hours, Priority",   # case/space variant
+    "ticket_id,priority,category,resolution_time_hours,PRIORITY",
+    "ticket_id,priority,category,resolution_time_hours,priority ",   # trailing space
+])
+def test_duplicate_headers_rejected(tmp_path, header):
+    with pytest.raises(TicketDataError, match="Duplicate column names"):
+        load_ticket_csv(write(tmp_path, header + "\n"))
+
+
+def test_missing_and_non_file_paths(tmp_path):
+    with pytest.raises(TicketDataError, match="File not found"):
+        load_ticket_csv(tmp_path / "nope.csv")
+    with pytest.raises(TicketDataError, match="Not a file"):
+        load_ticket_csv(tmp_path)
+
+
+@pytest.mark.parametrize("text", ["", "   \n\n"])
+def test_empty_file(tmp_path, text):
+    with pytest.raises(TicketDataError, match="empty"):
+        load_ticket_csv(write(tmp_path, text))
+
+
+def test_header_only_no_rows(tmp_path):
+    with pytest.raises(TicketDataError, match="no rows"):
+        clean_tickets(load_ticket_csv(write(tmp_path, HEADER)))
+
+
+def test_missing_required_column_from_file(tmp_path):
+    raw = load_ticket_csv(write(tmp_path, "ticket_id,priority\nT1,High\n"))
+    with pytest.raises(TicketDataError, match="Missing required columns: category, resolution_time_hours"):
+        clean_tickets(raw)
+
+
+def test_non_utf8_rejected(tmp_path):
+    p = tmp_path / "bad.csv"
+    p.write_bytes(HEADER.encode() + b"T1,High,\xff\xfe,3\n")
+    with pytest.raises(TicketDataError, match="UTF-8"):
+        load_ticket_csv(p)
+
+
+def test_acronym_category_not_corrupted(tmp_path):
+    raw = load_ticket_csv(write(tmp_path, HEADER + "T1,High,IT,3\nT2,Low,IT,2\nT3,Low,it,1\n"))
+    clean, _, _ = clean_tickets(raw)
+    assert set(clean["category"]) == {"IT"}
+
+
+def test_end_to_end_run_pipeline_writes_outputs(tmp_path):
+    text = HEADER + "T1,High,IT,3\nT2,Low,Billing,bad\n"
+    p = write(tmp_path, text)
+    res = run_pipeline(p, tmp_path / "out")
+    assert len(res["clean"]) == 1 and len(res["rejected"]) == 1
+    assert (tmp_path / "out" / "tickets_clean.csv").exists()
+    assert p.read_text() == text  # raw untouched
