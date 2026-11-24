@@ -205,3 +205,67 @@ def test_end_to_end_run_pipeline_writes_outputs(tmp_path):
     assert len(res["clean"]) == 1 and len(res["rejected"]) == 1
     assert (tmp_path / "out" / "tickets_clean.csv").exists()
     assert p.read_text() == text  # raw untouched
+
+
+# ---------- regressions for code-review blockers B1-B4 ----------
+HDR = "ticket_id,priority,category,resolution_time_hours,rating\n"
+
+
+def test_blank_and_null_ticket_id_rejected():
+    df = make([
+        ["", "High", "IT", "2", "open", "4"],
+        [None, "High", "IT", "2", "open", "4"],
+        ["  ", "High", "IT", "3", "open", "4"],
+        ["T1", "High", "IT", "2", "open", "4"],
+    ])
+    clean, rejected, stats = clean_tickets(df)
+    assert list(clean["ticket_id"]) == ["T1"]
+    assert (rejected["reject_reason"] == "missing_ticket_id").all()
+    assert stats["rejection_reasons"]["missing_ticket_id"] == len(rejected)
+
+
+def test_rating_invalid_text_vs_blank_vs_out_of_range():
+    rows = [["T%d" % i, "High", "IT", "1", "open", v]
+            for i, v in enumerate(["4.5", "9", "abc", "1e999", "", None, "3"])]
+    clean, _, stats = clean_tickets(make(rows))
+    assert len(clean) == 7  # keep-row policy preserved
+    assert stats["ratings_out_of_range_nulled"] == 2   # 4.5, 9
+    assert stats["ratings_invalid_text_nulled"] == 2   # abc, 1e999 (unparseable)
+    assert clean["rating"].isna().sum() == 6
+    by_id = clean.set_index("ticket_id")["rating"]
+    assert by_id["T6"] == 3
+    assert by_id[["T4", "T5"]].isna().all()  # blank / None stay plain missing
+
+
+@pytest.mark.parametrize("name", ["tickets_clean.csv", "tickets_rejected.csv", "summary_priority.csv"])
+def test_input_colliding_with_output_is_refused(tmp_path, name):
+    out = tmp_path / "out"
+    out.mkdir()
+    src = out / name
+    src.write_text(HDR + "T1,High,IT,2,4\n", encoding="utf-8")
+    before = src.read_bytes()
+    with pytest.raises(TicketDataError, match="overwrite"):
+        run_pipeline(str(src), str(out))
+    assert src.read_bytes() == before
+
+
+def test_symlinked_input_colliding_with_output_is_refused(tmp_path):
+    real = tmp_path / "real.csv"
+    real.write_text(HDR + "T1,High,IT,2,4\n", encoding="utf-8")
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "tickets_clean.csv").symlink_to(real)
+    before = real.read_bytes()
+    with pytest.raises(TicketDataError, match="overwrite"):
+        run_pipeline(str(real), str(out))
+    assert real.read_bytes() == before
+
+
+def test_quoted_multiline_and_commas_preserved(tmp_path):
+    p = tmp_path / "m.csv"
+    p.write_bytes((HDR.replace("rating", "rating,description")
+                   + 'T1,High,IT,2,4,"first line\nsecond, line"\n'
+                   + 'T2,High,IT,2,4,"crlf\r\nline"\n').encode())
+    df = load_ticket_csv(p)
+    assert df.loc[0, "description"] == "first line\nsecond, line"
+    assert df.loc[1, "description"] == "crlf\r\nline"

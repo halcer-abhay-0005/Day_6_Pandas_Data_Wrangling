@@ -13,9 +13,11 @@ R4  Non-numeric / negative / infinite resolution_time_hours -> invalid, row reje
 R5  Missing priority or category -> row rejected (cannot be summarised).
 R6  priority must be in VALID_PRIORITIES, otherwise rejected (no guessing,
     e.g. "Urgent" is not silently mapped to "Critical").
-R7  rating must be an integer 1-5. Missing rating is KEPT as NA (a ticket
-    can be valid without feedback); out-of-range rating is set to NA and
-    counted, the row itself stays valid.
+R7  rating must be an integer 1-5. Missing (blank) rating is KEPT as NA (a
+    ticket can be valid without feedback); a non-blank unparseable rating
+    ("abc") and an out-of-range/non-integer/infinite rating are each set to NA
+    and counted separately, the row itself stays valid.
+R5b Missing/blank ticket_id -> row rejected (missing_ticket_id).
 R8  Unparseable created_at -> NA (ISO strings kept), counted, row stays valid.
 Input shape (strict, in load_ticket_csv): duplicate headers (raw or after
 normalization), rows with the wrong field count, empty/missing/undecodable
@@ -26,6 +28,9 @@ Raw input is never mutated; every step works on a copy.
 from __future__ import annotations
 
 import csv
+import io
+import os
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -77,14 +82,16 @@ def load_ticket_csv(path: str | Path) -> pd.DataFrame:
     if not path.is_file():
         raise TicketDataError(f"Not a file: {path}")
     try:
-        text = path.read_text(encoding="utf-8-sig")
+        # Decode bytes ourselves: read_text() would translate newlines and
+        # splitlines() below would drop quoted line breaks.
+        text = path.read_bytes().decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise TicketDataError("CSV must be UTF-8 encoded.") from exc
     except OSError as exc:
         raise TicketDataError(f"Cannot read {path}: {exc.strerror}") from exc
 
     try:
-        rows = [r for r in csv.reader(text.splitlines(), strict=True) if any(c.strip() for c in r)]
+        rows = [r for r in csv.reader(io.StringIO(text, newline=""), strict=True) if any(c.strip() for c in r)]
     except csv.Error as exc:
         raise TicketDataError(f"Malformed CSV: {exc}") from exc
     if not rows:
@@ -173,10 +180,14 @@ def clean_tickets(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
 
     # optional columns
     rating_out_of_range = 0
+    rating_invalid_text = 0
     if "rating" in df.columns:
         r = pd.to_numeric(df["rating"], errors="coerce")
+        # non-blank source value that did not parse -> invalid, not "missing"
+        invalid_text = r.isna() & df["rating"].astype("string").str.strip().replace("", pd.NA).notna()
+        rating_invalid_text = int(invalid_text.sum())
         bad = r.notna() & (
-            (r < RATING_RANGE[0]) | (r > RATING_RANGE[1]) | (r % 1 != 0)
+            ~np.isfinite(r) | (r < RATING_RANGE[0]) | (r > RATING_RANGE[1]) | (r % 1 != 0)
         )
         rating_out_of_range = int(bad.sum())
         df["rating"] = r.mask(bad).astype("Int64")
@@ -190,6 +201,7 @@ def clean_tickets(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
 
     # rejection reasons
     reasons = pd.DataFrame(index=df.index)
+    reasons["missing_ticket_id"] = df["ticket_id"].isna()
     reasons["missing_priority_or_category"] = df[["priority", "category"]].isna().any(axis=1)
     reasons["invalid_priority"] = df["priority"].notna() & ~df["priority"].isin(VALID_PRIORITIES)
     reasons["non_finite_resolution_time"] = non_finite
@@ -213,6 +225,7 @@ def clean_tickets(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
         "clean_rows": len(clean),
         "rejection_reasons": {c: int(reasons[c].sum()) for c in reasons},
         "ratings_out_of_range_nulled": rating_out_of_range,
+        "ratings_invalid_text_nulled": rating_invalid_text,
         "unparseable_dates": bad_dates,
         "missing_ratings_kept": int(clean["rating"].isna().sum()) if "rating" in clean else 0,
         "data_quality_percentage": round(len(clean) / n_input * 100, 2),
@@ -247,16 +260,38 @@ def build_report(clean: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
 
 # ---------- orchestration ----------
-def run_pipeline(raw_path: str, out_dir: str) -> dict:
-    raw = load_ticket_csv(raw_path)
+def _write_csv_atomic(df: pd.DataFrame, target: Path, index: bool) -> None:
+    """Write to a temp file in the same directory, then atomically replace."""
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=target.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            df.to_csv(fh, index=index)
+        os.replace(tmp, target)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+def run_pipeline(raw_path: str | Path, out_dir: str | Path) -> dict:
+    raw_file = Path(raw_path).resolve()  # resolves symlinks
+    raw = load_ticket_csv(raw_file)
     clean, rejected, stats = clean_tickets(raw)
     report = build_report(clean)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    clean.to_csv(out / "tickets_clean.csv", index=False)
-    rejected.to_csv(out / "tickets_rejected.csv", index=False)
-    for name, table in report.items():
-        table.to_csv(out / f"summary_{name}.csv")
+    outputs = [(out / "tickets_clean.csv", clean, False),
+               (out / "tickets_rejected.csv", rejected, False)]
+    outputs += [(out / f"summary_{name}.csv", table, True) for name, table in report.items()]
+    # Raw input must never be overwritten: check every target before writing any.
+    for target, _, _ in outputs:
+        if target.resolve() == raw_file or (target.exists() and os.path.samefile(target, raw_file)):
+            raise TicketDataError(
+                f"Output file {target} would overwrite the raw input {raw_file}; "
+                "choose a different input path or output directory."
+            )
+    for target, df, index in outputs:
+        _write_csv_atomic(df, target, index)
     return {"clean": clean, "rejected": rejected, "stats": stats, "report": report}
 
 
